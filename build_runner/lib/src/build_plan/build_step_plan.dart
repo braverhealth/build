@@ -41,6 +41,14 @@ abstract class BuildStepPlan
 
     final allInputs = sources.toSet();
     allInputs.addAll(placeholderIds);
+    // A phase only ever matches inputs from its own package, so scanning every
+    // input for every phase is quadratic in workspace builds, where there is a
+    // phase per package and builder. Grouping inputs by package keeps the
+    // same iteration order within each package.
+    final inputsByPackage = <String, List<AssetId>>{};
+    for (final input in allInputs) {
+      (inputsByPackage[input.package] ??= []).add(input);
+    }
 
     for (
       var phaseNum = 0;
@@ -50,7 +58,7 @@ abstract class BuildStepPlan
       final phase = buildPhases.inBuildPhases[phaseNum];
       final phaseOutputs = <AssetId>{};
       final phaseSteps = ListBuilder<BuildStepId>();
-      for (final input in allInputs) {
+      for (final input in inputsByPackage[phase.package] ?? const <AssetId>[]) {
         if (!_actionMatches(
           phase,
           input,
@@ -83,7 +91,11 @@ abstract class BuildStepPlan
         }
       }
       result.buildStepsByPhase.add(phaseSteps.build());
-      allInputs.addAll(phaseOutputs);
+      for (final output in phaseOutputs) {
+        if (allInputs.add(output)) {
+          (inputsByPackage[output.package] ??= []).add(output);
+        }
+      }
     }
 
     return result.build();
