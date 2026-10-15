@@ -176,7 +176,7 @@ class BuildPhaseCreator {
         );
 
         final builder = BuildLogLogger.scopeLogSync(
-          () => builderFactory(options),
+          () => builderFactory(_withoutBuildRunnerOptions(options)),
           buildLog.loggerForOther(builderDefinition.key),
         );
         if (builder == null) throw const CannotBuildException();
@@ -279,6 +279,21 @@ class BuildPhaseCreator {
     }
     return result;
   }
+
+  /// [options] without the ones that build_runner reads itself.
+  ///
+  /// Builders that validate their options reject keys they don't know, so
+  /// passing `run_only_if_triggered` on would stop them from using triggers.
+  /// The build phase keeps the full options.
+  static BuilderOptions _withoutBuildRunnerOptions(BuilderOptions options) {
+    if (!options.config.containsKey(_runOnlyIfTriggered)) return options;
+    return BuilderOptions(
+      {...options.config}..remove(_runOnlyIfTriggered),
+      isRoot: options.isRoot,
+    );
+  }
+
+  static const _runOnlyIfTriggered = 'run_only_if_triggered';
 
   /// Whether [builderDefinition] applies to [buildTarget].
   ///

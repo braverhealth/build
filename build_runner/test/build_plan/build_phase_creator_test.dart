@@ -59,6 +59,43 @@ void main() {
     });
 
     test(
+      'passes run_only_if_triggered to the phase but not the builder',
+      () async {
+        final buildConfigs = await BuildConfigs.load(
+          buildPackages: buildPackages,
+          testingOverrides: TestingOverrides(
+            defaultRootPackageSources: ['**'].build(),
+          ),
+        );
+        final phases = await BuildPhaseCreator(
+          builderFactories: BuilderFactories({
+            'b:cool_builder': [StrictBuilder.new],
+          }),
+          buildPackages: buildPackages,
+          buildConfigs: buildConfigs,
+          builderDefinitions: [
+            BuilderDefinition(
+              'b:cool_builder',
+              autoApply: AutoApply.allPackages,
+            ),
+          ],
+          builderConfigOverrides: {
+            'b:cool_builder': {
+              'option_a': 'a',
+              'run_only_if_triggered': true,
+            }.build(),
+          }.build(),
+          isReleaseBuild: false,
+        ).createBuildPhases();
+        expect(phases.inBuildPhases, isNotEmpty);
+        for (final phase in phases.inBuildPhases) {
+          expect((phase.builder as StrictBuilder).optionA, equals('a'));
+          expect(phase.options.config['run_only_if_triggered'], isTrue);
+        }
+      },
+    );
+
+    test(
       'applies root package global options before builderConfigOverrides',
       () async {
         await runInBuildConfigZone(
@@ -493,6 +530,14 @@ class CoolBuilder extends Builder {
 
   @override
   Future build(BuildStep buildStep) async => throw UnimplementedError();
+}
+
+/// Rejects options it doesn't know, like many published builders do.
+class StrictBuilder extends CoolBuilder {
+  StrictBuilder(BuilderOptions options) : super(options) {
+    final unknown = options.config.keys.where((key) => key != 'option_a');
+    if (unknown.isNotEmpty) throw ArgumentError.value(unknown, 'options');
+  }
 }
 
 class _InvalidPostProcessBuilder extends PostProcessBuilder {
