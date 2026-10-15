@@ -7,6 +7,12 @@ import 'dart:io';
 import 'package:analyzer/file_system/file_system.dart' show ResourceProvider;
 // ignore: implementation_imports
 import 'package:analyzer/src/clients/build_resolvers/build_resolvers.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/byte_store.dart'
+    show MemoryCachingByteStore;
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/file_byte_store.dart'
+    show EvictingFileByteStore;
 import 'package:package_config/package_config.dart' show PackageConfig;
 import 'package:path/path.dart' as p;
 import 'package:pub_semver/pub_semver.dart';
@@ -33,6 +39,29 @@ AnalysisDriverForPackageBuild analysisDriver(
     fileContentCache: analysisDriverModel.filesystem,
     sdkSummaryBytes: File(sdkSummaryPath).readAsBytesSync(),
     uriResolvers: [analysisDriverModel.filesystem],
+    byteStore: _persistentByteStore(),
+  );
+}
+
+/// The directory named by this environment variable holds the analyzer's
+/// parsed and linked summaries across builds.
+const _analyzerCacheEnvironmentVariable = 'BUILD_RUNNER_ANALYZER_CACHE';
+
+/// A byte store that keeps analyzer results on disk, or `null` to keep the
+/// analyzer's default in-memory store.
+///
+/// Without it every build_runner process parses and links the SDK, every
+/// dependency and every workspace package from scratch. Entries are keyed by
+/// content and API signatures, and the analyzer only sees the virtual asset
+/// paths from [AnalysisDriverFilesystem], so one directory can safely be
+/// shared by several checkouts and by concurrent processes.
+ByteStore? _persistentByteStore() {
+  final path = Platform.environment[_analyzerCacheEnvironmentVariable];
+  if (path == null || path.isEmpty) return null;
+  Directory(path).createSync(recursive: true);
+  return MemoryCachingByteStore(
+    EvictingFileByteStore(path, 4 * 1024 * 1024 * 1024),
+    512 * 1024 * 1024,
   );
 }
 
